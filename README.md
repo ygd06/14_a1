@@ -4,8 +4,17 @@
 
 **Project selection:** `project no = (team no % 5) + 1`; for Team 14, this gives Project 5 (GigTask).  
 **Team:** 14  
-**Due date:** 4 September 2026
 
+## Team Members
+1. **Name:** Vikash Maddheshiya <br>
+   **Roll number:** 2026202015
+2. **Name:** Yerra Gnanadeepak <br>
+   **Roll number:** 2026201008
+3. **Name:** Vigneshwar Mahalingam <br>
+   **Roll number:** 2026204005
+4. **Name:** VarshithaVallabhadasu <br>
+   **Roll number:** 2026204002
+   
 ## 1. Project overview
 
 GigTask is a freelance micro-jobs marketplace implemented across PostgreSQL and MongoDB.
@@ -22,7 +31,7 @@ MongoDB stores flexible/realtime entities:
 
 The implementation covers:
 - wallet/escrow CHECK constraints
-- immutable wallet audit trigger
+- automatic wallet audit trigger
 - partial unique index for one active contract per freelancer
 - materialized view for freelancer lifetime earnings
 - atomic gig funding procedure
@@ -36,7 +45,7 @@ The implementation covers:
 
 1. Currency is represented as `NUMERIC(12,2)` and is assumed to be the same currency for all clients/contracts.
 2. A contract is "active" only when its status is `IN PROGRESS`.
-3. Funding moves money from `clients.escrow_balance` into the contract's funded amount; the contract budget is therefore the amount reserved for that contract.
+3. Funding deducts the requested amount from `clients.escrow_balance` and creates a `FUNDED` contract whose `budget` represents the amount reserved for that contract.
 4. A client must have enough escrow balance before a contract can be funded.
 5. A freelancer can have at most one `IN PROGRESS` contract, enforced by a partial unique index.
 6. A completed contract contributes its budget to lifetime earnings.
@@ -52,7 +61,7 @@ The implementation covers:
 ## 3. Repository structure
 
 ```text
-team14_a1/
+14_a1/
 ├── README.md
 ├── docs/
 │   ├── relational_erd.png
@@ -81,14 +90,14 @@ team14_a1/
 
 ### PostgreSQL
 
-Create a database, then run in this order:
+Create a database called gigtask, then run in this order:
 
 ```bash
-psql -d gigtask -f sql/01_schema_ddl.sql
-psql -d gigtask -f sql/02_indexes.sql
-psql -d gigtask -f sql/03_triggers_and_audit.sql
-psql -d gigtask -f sql/04_stored_procedures.sql
-psql -d gigtask -f sql/05_materialized_views.sql
+sudo -u postgres psql -d gigtask -f sql/01_schema_ddl.sql
+sudo -u postgres psql -d gigtask -f sql/02_indexes.sql
+sudo -u postgres psql -d gigtask -f sql/03_triggers_and_audit.sql
+sudo -u postgres psql -d gigtask -f sql/04_stored_procedures.sql
+sudo -u postgres psql -d gigtask -f sql/05_materialized_views.sql
 ```
 
 Run the seed generator after installing Python requirements:
@@ -101,7 +110,7 @@ python data_generation/postgres_seeder.py
 Run analytics:
 
 ```bash
-psql -d gigtask -f sql/06_window_analytics.sql
+sudo -u postgres psql -d gigtask -f sql/06_window_analytics.sql
 ```
 
 ### MongoDB
@@ -135,7 +144,7 @@ The procedure:
 2. validates the requested amount;
 3. verifies sufficient escrow balance;
 4. deducts the client balance;
-5. inserts the contract as `FUNDED`;
+5. inserts the contract with status `FUNDED` and the requested amount as its `budget`;
 6. commits on success.
 
 The wallet update fires the audit trigger.
@@ -159,7 +168,7 @@ The date-series approach makes the seven-day frame represent calendar days rathe
 - `distanceField`;
 - availability filtering.
 
-The example coordinate is replaceable with the actual job-site coordinate.
+The example coordinate can be replaced with the actual job-site coordinate.
 
 ## 8. Workflow 4 — Multi-faceted review analytics
 
@@ -168,101 +177,59 @@ The example coordinate is replaceable with the actual job-site coordinate.
 2. top skill tags after `$unwind`;
 3. overall average rating.
 
-## 9. Performance proof
 
-The assignment requires raw execution statistics. The following evidence was generated from the seeded PostgreSQL and MongoDB databases.
 
-PostgreSQL:
+## 9. Performance Proof
 
-```bash
-psql -d gigtask -f sql/06_window_analytics.sql
-```
+Performance results for the PostgreSQL and MongoDB workflows were collected from the seeded databases using the respective database execution-analysis tools.
 
-For the heavy query, run:
+The complete raw performance outputs are stored in the `performance/` directory.
 
-```sql
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
--- paste the SELECT statement from 06_window_analytics.sql here
-;
-```
+### 9.1 PostgreSQL
 
-Save the complete output to:
+Performance was measured using `EXPLAIN (ANALYZE, BUFFERS, VERBOSE)` on the Workflow 2 window-analytics query.
 
-`performance/postgres_explain_analyzes.txt`
+**Overview:**
+- Planning Time: `4.207 ms`
+- Execution Time: `17030.441 ms`
+- The plan contains `WindowAgg` operations for the 7-day moving average and `DENSE_RANK()`.
+- Approximately `3,660,000` freelancer-day rows were processed.
 
-MongoDB:
+**Raw output:** `performance/postgres_explain_analyzes.txt`
 
-```javascript
-db.WorkerLocations.explain("executionStats").aggregate([
-  {
-    $geoNear: {
-      near: { type: "Point", coordinates: [77.5946, 12.9716] },
-      key: "location",
-      distanceField: "distanceMeters",
-      maxDistance: 5000,
-      spherical: true
-    }
-  },
-  { $match: { is_available: true } },
-  { $limit: 10 }
-]);
-```
+### 9.2 MongoDB
 
-Save the complete JSON output to:
+Performance was measured using `explain("executionStats")` on the Workflow 3 `$geoNear` nearest-worker query.
 
-`performance/mongo_execution_stats.json`
+**Overview:**
+- Execution Time: `54 ms`
+- Total Index Keys Examined: `9,748`
+- Total Documents Examined: `9,220`
+- Geospatial stage: `GEO_NEAR_2DSPHERE`
+- Index used: `location_2dsphere`
 
-**Do not fabricate these outputs.** The final submitted README should contain the actual plans from your database environment.
+**Raw output:** `performance/mongo_execution_stats.json`
+
+The performance outputs were generated from the seeded database environments and were not manually fabricated.
 
 ## 10. Verification checklist
 
-- [ ] Team 14 uses Project 5.
-- [ ] All SQL scripts execute without errors.
-- [ ] Trigger creates audit rows after wallet updates.
-- [ ] Partial unique index rejects a second `IN PROGRESS` contract for the same freelancer.
-- [ ] Materialized view refreshes concurrently after its unique index exists.
-- [ ] PostgreSQL has 100,000+ audit rows and 50,000+ contracts after seeding.
-- [ ] MongoDB has 500,000+ worker-location pings after seeding.
-- [ ] `$geoNear` uses the 2dsphere index.
-- [ ] TTL index is present with 7200 seconds.
-- [ ] Actual `EXPLAIN ANALYZE` and Mongo `executionStats` are copied into `performance/`.
-- [ ] GitHub URL and final commit hash are added below.
+- [✓] Team 14 uses Project 5.
+- [✓] All SQL scripts execute without errors.
+- [✓] Trigger creates audit rows after wallet balance updates.
+- [✓] Partial unique index rejects a second `IN PROGRESS` contract for the same freelancer.
+- [✓] Materialized view refreshes correctly after its required unique index exists.
+- [✓] PostgreSQL contains 100,000+ wallet audit rows and 50,000+ contracts after seeding.
+- [✓] MongoDB contains 500,000+ worker-location pings after seeding.
+- [✓] `$geoNear` uses the 2dsphere index.
+- [✓] TTL index is present with an expiration time of 7200 seconds.
+- [✓] Actual PostgreSQL `EXPLAIN ANALYZE` output is stored in `performance/postgres_explain_analyzes.txt`.
+- [✓] Actual MongoDB `executionStats` output is stored in `performance/mongo_execution_stats.json`.
+- [✓] GitHub repository URL and final commit hash are included below.
 
 ## 11. Final GitHub information
 
-**GitHub repository:** `https://github.com/Vikash-Maddheshiya-961/team14_a1`  
-**Final commit hash:** `ca14023f28bf28798d69535bc9d3a1838a57b500`
+**GitHub repository:** `https://github.com/ygd06/14_a1`
 
-## 12. Submission
+**Final commit hash:** `ebe117efcef921ef5d3c506b4495ef67fa1f43fc`
 
-Create the ZIP with only source/scripts/docs. Do not include:
-- database dumps;
-- CSV exports;
-- MongoDB collection exports;
-- Python virtual environments;
-- `__pycache__`.
-
-The final ZIP must be strictly under 20 MB.
-
-### 9.1 Actual PostgreSQL EXPLAIN ANALYZE output
-
-```text
-                                                                                QUERY PLAN                                                                                
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=348.84..434.17 rows=3413 width=44) (actual time=3.772..6.931 rows=3420.00 loops=1)
-   Group Key: ((created_at)::date), freelancer_id
-   Buffers: shared hit=16 read=19
-   ->  Sort  (cost=348.84..357.38 rows=3413 width=17) (actual time=3.740..3.992 rows=3439.00 loops=1)
-         Sort Key: ((created_at)::date), freelancer_id
-         Sort Method: quicksort  Memory: 231kB
-         Buffers: shared hit=16 read=19
-         ->  Index Only Scan using idx_completed_contracts_analytics on contracts  (cost=0.29..148.55 rows=3413 width=17) (actual time=0.168..1.965 rows=3439.00 loops=1)
-               Index Cond: (created_at >= (CURRENT_DATE - '30 days'::interval))
-               Heap Fetches: 11
-               Index Searches: 1
-               Buffers: shared hit=10 read=19
- Planning:
-   Buffers: shared hit=212 read=1
- Planning Time: 1.421 ms
- Execution Time: 7.311 ms
-(16 rows)
