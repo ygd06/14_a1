@@ -1,13 +1,4 @@
-test> switched to db gigtask
-gigtask> 
-gigtask> 
-gigtask> 
-gigtask> 
-gigtask> 
-gigtask> | | | 
-gigtask> 
-gigtask> | | | | | | | | | | | | | | | | | | | | | | | | | | | | 
-gigtask> {
+{
   "explainVersion": "1",
   "stages": [
     {
@@ -3319,5 +3310,3 @@ gigtask> {
   },
   "ok": 1
 }
-
-gigtask> 
