@@ -1,19 +1,115 @@
-                                                                                QUERY PLAN                                                                                
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- GroupAggregate  (cost=348.84..434.17 rows=3413 width=44) (actual time=3.772..6.931 rows=3420.00 loops=1)
-   Group Key: ((created_at)::date), freelancer_id
-   Buffers: shared hit=16 read=19
-   ->  Sort  (cost=348.84..357.38 rows=3413 width=17) (actual time=3.740..3.992 rows=3439.00 loops=1)
-         Sort Key: ((created_at)::date), freelancer_id
-         Sort Method: quicksort  Memory: 231kB
-         Buffers: shared hit=16 read=19
-         ->  Index Only Scan using idx_completed_contracts_analytics on contracts  (cost=0.29..148.55 rows=3413 width=17) (actual time=0.168..1.965 rows=3439.00 loops=1)
-               Index Cond: (created_at >= (CURRENT_DATE - '30 days'::interval))
-               Heap Fetches: 11
-               Index Searches: 1
-               Buffers: shared hit=10 read=19
+                                                                                                                              QUERY PLAN                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=19137579.04..19137579.04 rows=1 width=360) (actual time=15625.897..16822.494 rows=3660000.00 loops=1)
+   Output: daily_filled_1.freelancer_id, daily_filled_1.name, daily_filled_1.day, daily_filled_1.revenue, (round((avg(daily_filled_1.revenue) OVER w1), 2)), r.lifetime_revenue, r.revenue_rank
+   Sort Key: daily_filled_1.day DESC, r.revenue_rank, daily_filled_1.freelancer_id
+   Sort Method: external merge  Disk: 222328kB
+   Buffers: shared hit=1078, temp read=165760 written=166039
+   CTE daily_filled
+     ->  Hash Left Join  (cost=8090.43..237231.02 rows=10000000 width=44) (actual time=109.215..1721.130 rows=3660000.00 loops=1)
+           Output: f.id, f.name, (gs.day)::date, (COALESCE(dr.revenue, 0.00))::numeric(14,2)
+           Inner Unique: true
+           Hash Cond: ((f.id = dr.freelancer_id) AND ((gs.day)::date = dr.day))
+           Buffers: shared hit=1066, temp read=92 written=160
+           ->  Nested Loop  (cost=1514.32..126904.84 rows=10000000 width=30) (actual time=12.042..495.243 rows=3660000.00 loops=1)
+                 Output: f.id, f.name, gs.day
+                 Buffers: shared hit=595
+                 ->  Index Scan using freelancers_pkey on public.freelancers f  (cost=0.29..368.29 rows=10000 width=22) (actual time=0.038..2.902 rows=10000.00 loops=1)
+                       Output: f.id, f.name, f.latitude, f.longitude, f.is_available
+                       Index Searches: 1
+                       Buffers: shared hit=124
+                 ->  Materialize  (cost=1514.04..1539.05 rows=1000 width=8) (actual time=0.001..0.017 rows=366.00 loops=10000)
+                       Output: gs.day
+                       Storage: Memory  Maximum Storage: 28kB
+                       Buffers: shared hit=471
+                       ->  Nested Loop  (cost=1514.04..1534.05 rows=1000 width=8) (actual time=11.997..12.050 rows=366.00 loops=1)
+                             Output: gs.day
+                             Buffers: shared hit=471
+                             ->  Aggregate  (cost=1514.03..1514.05 rows=1 width=8) (actual time=11.916..11.917 rows=1.00 loops=1)
+                                   Output: COALESCE(min((contracts.created_at)::date), CURRENT_DATE), COALESCE(max((contracts.created_at)::date), CURRENT_DATE)
+                                   Buffers: shared hit=471
+                                   ->  Seq Scan on public.contracts  (cost=0.00..1096.00 rows=41803 width=8) (actual time=0.032..4.345 rows=41889.00 loops=1)
+                                         Output: contracts.id, contracts.client_id, contracts.freelancer_id, contracts.budget, contracts.status, contracts.created_at
+                                         Filter: ((contracts.status)::text = 'COMPLETED'::text)
+                                         Rows Removed by Filter: 8111
+                                         Buffers: shared hit=471
+                             ->  Function Scan on pg_catalog.generate_series gs  (cost=0.01..10.01 rows=1000 width=8) (actual time=0.075..0.096 rows=366.00 loops=1)
+                                   Output: gs.day
+                                   Function Call: generate_series(((COALESCE(min((contracts.created_at)::date), CURRENT_DATE)))::timestamp with time zone, ((COALESCE(max((contracts.created_at)::date), CURRENT_DATE)))::timestamp with time zone, '1 day'::interval)
+           ->  Hash  (cost=5949.07..5949.07 rows=41803 width=30) (actual time=96.868..96.869 rows=41652.00 loops=1)
+                 Output: dr.revenue, dr.freelancer_id, dr.day
+                 Buckets: 65536  Batches: 1  Memory Usage: 2628kB
+                 Buffers: shared hit=471, temp read=92 written=160
+                 ->  Subquery Scan on dr  (cost=4309.61..5949.07 rows=41803 width=30) (actual time=35.940..90.466 rows=41652.00 loops=1)
+                       Output: dr.revenue, dr.freelancer_id, dr.day
+                       Buffers: shared hit=471, temp read=92 written=160
+                       ->  HashAggregate  (cost=4309.61..5531.04 rows=41803 width=30) (actual time=35.934..86.948 rows=41652.00 loops=1)
+                             Output: contracts_1.freelancer_id, ((contracts_1.created_at)::date), (sum(contracts_1.budget))::numeric(14,2)
+                             Group Key: contracts_1.freelancer_id, (contracts_1.created_at)::date
+                             Planned Partitions: 4  Batches: 5  Memory Usage: 8241kB  Disk Usage: 760kB
+                             Buffers: shared hit=471, temp read=92 written=160
+                             ->  Seq Scan on public.contracts contracts_1  (cost=0.00..1200.51 rows=41803 width=17) (actual time=0.014..8.028 rows=41889.00 loops=1)
+                                   Output: contracts_1.freelancer_id, (contracts_1.created_at)::date, contracts_1.budget
+                                   Filter: ((contracts_1.status)::text = 'COMPLETED'::text)
+                                   Rows Removed by Filter: 8111
+                                   Buffers: shared hit=471
+   ->  Hash Join  (cost=17085112.02..18900348.01 rows=1 width=360) (actual time=10214.269..10978.051 rows=3660000.00 loops=1)
+         Output: daily_filled_1.freelancer_id, daily_filled_1.name, daily_filled_1.day, daily_filled_1.revenue, round((avg(daily_filled_1.revenue) OVER w1), 2), r.lifetime_revenue, r.revenue_rank
+         Hash Cond: ((r.freelancer_id = daily_filled_1.freelancer_id) AND ((r.name)::text = (daily_filled_1.name)::text))
+         Buffers: shared hit=1072, temp read=110182 written=110378
+         ->  Subquery Scan on r  (cost=10953485.18..11228485.17 rows=10000000 width=306) (actual time=1973.246..1979.033 rows=10000.00 loops=1)
+               Output: r.lifetime_revenue, r.revenue_rank, r.freelancer_id, r.name
+               Buffers: shared hit=6, temp read=49829 written=31668
+               ->  WindowAgg  (cost=10953485.18..11128485.17 rows=10000000 width=306) (actual time=1973.243..1978.165 rows=10000.00 loops=1)
+                     Output: lifetime.freelancer_id, lifetime.name, lifetime.lifetime_revenue, dense_rank() OVER w1
+                     Window: w1 AS (ORDER BY lifetime.lifetime_revenue ROWS UNBOUNDED PRECEDING)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=6, temp read=49829 written=31668
+                     ->  Sort  (cost=10953485.17..10978485.17 rows=10000000 width=298) (actual time=1973.226..1974.128 rows=10000.00 loops=1)
+                           Output: lifetime.lifetime_revenue, lifetime.freelancer_id, lifetime.name
+                           Sort Key: lifetime.lifetime_revenue DESC
+                           Sort Method: quicksort  Memory: 865kB
+                           Buffers: shared hit=6, temp read=49829 written=31668
+                           ->  Subquery Scan on lifetime  (cost=5361704.83..5586704.83 rows=10000000 width=298) (actual time=1244.479..1969.426 rows=10000.00 loops=1)
+                                 Output: lifetime.lifetime_revenue, lifetime.freelancer_id, lifetime.name
+                                 Buffers: shared hit=3, temp read=49829 written=31668
+                                 ->  GroupAggregate  (cost=5361704.83..5586704.83 rows=10000000 width=298) (actual time=1244.477..1968.574 rows=10000.00 loops=1)
+                                       Output: daily_filled.freelancer_id, daily_filled.name, sum(daily_filled.revenue)
+                                       Group Key: daily_filled.freelancer_id, daily_filled.name
+                                       Buffers: shared hit=3, temp read=49829 written=31668
+                                       ->  Sort  (cost=5361704.83..5386704.83 rows=10000000 width=284) (actual time=1244.355..1554.715 rows=3660000.00 loops=1)
+                                             Output: daily_filled.freelancer_id, daily_filled.name, daily_filled.revenue
+                                             Sort Key: daily_filled.freelancer_id, daily_filled.name
+                                             Sort Method: external merge  Disk: 126432kB
+                                             Buffers: shared hit=3, temp read=49829 written=31668
+                                             ->  CTE Scan on daily_filled  (cost=0.00..200000.00 rows=10000000 width=284) (actual time=0.110..343.655 rows=3660000.00 loops=1)
+                                                   Output: daily_filled.freelancer_id, daily_filled.name, daily_filled.revenue
+                                                   Storage: Disk  Maximum Storage: 145790kB
+                                                   Buffers: temp read=18224 written=1
+         ->  Hash  (cost=5561704.83..5561704.83 rows=10000000 width=320) (actual time=8238.928..8238.929 rows=3660000.00 loops=1)
+               Output: daily_filled_1.freelancer_id, daily_filled_1.name, daily_filled_1.day, daily_filled_1.revenue, (avg(daily_filled_1.revenue) OVER w1)
+               Buckets: 32768  Batches: 512  Memory Usage: 918kB
+               Buffers: shared hit=1066, temp read=35283 written=77688
+               ->  WindowAgg  (cost=5361704.83..5561704.83 rows=10000000 width=320) (actual time=4448.305..7319.372 rows=3660000.00 loops=1)
+                     Output: daily_filled_1.freelancer_id, daily_filled_1.name, daily_filled_1.day, daily_filled_1.revenue, avg(daily_filled_1.revenue) OVER w1
+                     Window: w1 AS (PARTITION BY daily_filled_1.freelancer_id ORDER BY daily_filled_1.day ROWS BETWEEN '6'::bigint PRECEDING AND CURRENT ROW)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=1066, temp read=35283 written=53640
+                     ->  Sort  (cost=5361704.83..5386704.83 rows=10000000 width=288) (actual time=3863.676..4211.154 rows=3660000.00 loops=1)
+                           Output: daily_filled_1.freelancer_id, daily_filled_1.day, daily_filled_1.name, daily_filled_1.revenue
+                           Sort Key: daily_filled_1.freelancer_id, daily_filled_1.day
+                           Sort Method: external merge  Disk: 140784kB
+                           Buffers: shared hit=1066, temp read=35283 written=53640
+                           ->  CTE Scan on daily_filled daily_filled_1  (cost=0.00..200000.00 rows=10000000 width=288) (actual time=109.223..2909.849 rows=3660000.00 loops=1)
+                                 Output: daily_filled_1.freelancer_id, daily_filled_1.day, daily_filled_1.name, daily_filled_1.revenue
+                                 Storage: Disk  Maximum Storage: 145790kB
+                                 Buffers: shared hit=1066, temp read=92 written=18383
  Planning:
-   Buffers: shared hit=212 read=1
- Planning Time: 1.421 ms
- Execution Time: 7.311 ms
-(16 rows)
+   Buffers: shared hit=390 read=1
+ Planning Time: 4.207 ms
+ JIT:
+   Functions: 61
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 4.162 ms (Deform 1.401 ms), Inlining 110.667 ms, Optimization 295.561 ms, Emission 220.696 ms, Total 631.086 ms
+ Execution Time: 17030.441 ms
+(112 rows)
